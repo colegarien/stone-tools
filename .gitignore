@@ -2,3 +2,6 @@
 *.MTF
 *.tga
 *.o3d
+*.exe
+out
+.vscode

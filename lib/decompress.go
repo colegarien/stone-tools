@@ -4,8 +4,9 @@ import (
 	"io"
 )
 
-func Decompress(reader io.ReadSeeker, compressedDataSize uint32) []byte {
+func Decompress(reader io.ReadSeeker, compressedDataSize uint32) ([]byte, error) {
 	var (
+		err                               error
 		mostSigBit, combinedWord          uint32
 		offsetToCopyFrom, byteCountToCopy uint32
 		currentDataByte, byteToCopy       byte
@@ -28,7 +29,11 @@ func Decompress(reader io.ReadSeeker, compressedDataSize uint32) []byte {
 					indicatorWord = 0xffffffff
 				} else {
 					var buf [1]byte
-					reader.Read(buf[:])
+					_, err = reader.Read(buf[:])
+					if err != nil {
+						return nil, err
+					}
+
 					indicatorWord = uint32(buf[0])
 					compressedDataSize--
 				}
@@ -47,7 +52,11 @@ func Decompress(reader io.ReadSeeker, compressedDataSize uint32) []byte {
 				currentDataByte = 0xff
 			} else {
 				var buf [1]byte
-				reader.Read(buf[:])
+				_, err = reader.Read(buf[:])
+				if err != nil {
+					return nil, err
+				}
+
 				currentDataByte = buf[0]
 				compressedDataSize--
 			}
@@ -61,7 +70,11 @@ func Decompress(reader io.ReadSeeker, compressedDataSize uint32) []byte {
 			leastSigBit = 0xffffffff
 		} else {
 			var buf [1]byte
-			reader.Read(buf[:])
+			_, err = reader.Read(buf[:])
+			if err != nil {
+				return nil, err
+			}
+
 			leastSigBit = uint32(buf[0])
 			compressedDataSize = uint32(dataSizeLeft - 1)
 		}
@@ -70,7 +83,11 @@ func Decompress(reader io.ReadSeeker, compressedDataSize uint32) []byte {
 			mostSigBit = 0xffffffff
 		} else {
 			var buf [1]byte
-			reader.Read(buf[:])
+			_, err = reader.Read(buf[:])
+			if err != nil {
+				return nil, err
+			}
+
 			mostSigBit = uint32(buf[0])
 			compressedDataSize--
 		}
@@ -97,5 +114,5 @@ func Decompress(reader io.ReadSeeker, compressedDataSize uint32) []byte {
 		}
 	}
 
-	return outputBuffer
+	return outputBuffer, nil
 }
