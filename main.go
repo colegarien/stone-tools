@@ -5,11 +5,20 @@ import (
 	"os"
 	"path/filepath"
 	"stone-tools/lib"
+	"stone-tools/view"
 )
 
 func main() {
-	mtfFile, err := os.Open("music.MTF")
-	// mtfFile, err := os.Open("data.mtf")
+	// extractAllFiles("music.MTF")
+	err := view.Run()
+	if err != nil {
+		fmt.Printf("An Error Occurred: %v", err)
+		os.Exit(1)
+	}
+}
+
+func extractAllFiles(mtfFilePath string) {
+	mtfFile, err := os.Open(mtfFilePath)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
 		return
