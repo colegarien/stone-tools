@@ -3,6 +3,7 @@ package archive_picker
 import (
 	"io/fs"
 	"path/filepath"
+	"stone-tools/view/archive_extractor"
 	"stone-tools/view/filters"
 	"strings"
 
@@ -14,14 +15,14 @@ import (
 var docStyle = lipgloss.NewStyle().Margin(1, 2)
 
 type item struct {
-	title string
-	desc  string
-	path  string
+	FileName string
+	Desc     string
+	Path     string
 }
 
-func (i item) Title() string       { return i.title }
-func (i item) Description() string { return i.desc }
-func (i item) FilterValue() string { return i.title }
+func (i item) Title() string       { return i.FileName }
+func (i item) Description() string { return i.Desc }
+func (i item) FilterValue() string { return i.FileName }
 
 type model struct {
 	rootPath string
@@ -36,7 +37,7 @@ func New(rootPath string) model {
 		}
 		if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mtf") {
 			desc := "- an mtf archive"
-			listItems = append(listItems, item{title: filepath.Base(path), desc: desc, path: path})
+			listItems = append(listItems, item{FileName: filepath.Base(path), Desc: desc, Path: path})
 		}
 		return nil
 	})
@@ -60,8 +61,12 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		switch msg.String() {
+		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "enter":
+			nextView := archive_extractor.New(m.rootPath, m.list.SelectedItem().(item).Path)
+			return nextView, nextView.Init()
 		}
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
