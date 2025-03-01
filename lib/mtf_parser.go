@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 )
 
 type MtfArchive struct {
@@ -59,7 +58,7 @@ func ScanMtfFile(mtfFile io.ReadSeeker) (MtfArchive, error) {
 		archive.VirtualFiles = append(archive.VirtualFiles, MtfVirtualFile{
 			Offset:    offset,
 			TotalSize: totalSize,
-			FileName:  filepath.Clean(strings.Trim(string(name), "\x00")),
+			FileName:  filepath.Clean(string(name[:len(name)-1])),
 		})
 	}
 

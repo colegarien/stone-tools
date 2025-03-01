@@ -65,7 +65,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "enter":
-			nextView := archive_extractor.New(m.rootPath, m.list.SelectedItem().(item).Path)
+			nextView := archive_extractor.New(m, m.rootPath, m.list.SelectedItem().(item).Path)
 			return nextView, nextView.Init()
 		}
 	case tea.WindowSizeMsg:

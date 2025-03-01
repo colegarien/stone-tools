@@ -1,11 +1,17 @@
 package archive_extractor
 
 import (
+	"bytes"
+	"fmt"
+	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"stone-tools/lib"
 	"stone-tools/view/filters"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,16 +23,17 @@ type extractProgressMsg struct {
 	totalFiles        float64
 	isDone            bool
 	lastExtractedFile string
+	time              time.Time
 }
 
 func extractArchive(sub chan extractProgressMsg, mtfFilePath string) tea.Cmd {
 	return func() tea.Msg {
-		mtfFile, err := os.Open(mtfFilePath)
+		mtfFileData, err := os.ReadFile(mtfFilePath)
 		if err != nil {
 			// fmt.Println("Error opening file:", err)
 			return nil
 		}
-		defer mtfFile.Close()
+		mtfFile := bytes.NewReader(mtfFileData)
 
 		archive, err := lib.ScanMtfFile(mtfFile)
 		if err != nil {
@@ -39,37 +46,49 @@ func extractArchive(sub chan extractProgressMsg, mtfFilePath string) tea.Cmd {
 		sub <- extractProgressMsg{
 			extractedFiles: float64(extractedFiles),
 			totalFiles:     float64(totalFiles),
-		} // TODO stop doing this synchronously, slows the extract wayyyy down
-
-		for _, virtualFile := range archive.VirtualFiles {
-			extractedFile, err := lib.ExtractVirtualFile(mtfFile, virtualFile)
-			if err != nil {
-				// fmt.Printf("Error extracting file `%s`: %+v\r\n", virtualFile.FileName, err)
-				continue
-			}
-
-			writePath := filepath.Join("out", virtualFile.FileName)
-			// fmt.Printf("Writing `%s` (%d bytes)...\r\n", writePath, len(extractedFile))
-
-			os.MkdirAll(filepath.Dir(writePath), os.ModePerm)
-			err = os.WriteFile(writePath, extractedFile, os.ModePerm)
-			if err != nil {
-				// fmt.Printf("Error writing extracted file `%s`: %+v\r\n", virtualFile.FileName, err)
-				continue
-			}
-
-			extractedFiles++
-			sub <- extractProgressMsg{
-				extractedFiles:    float64(extractedFiles),
-				totalFiles:        float64(totalFiles),
-				lastExtractedFile: virtualFile.FileName,
-			}
+			time:           time.Now().UTC(),
 		}
 
+		var wg sync.WaitGroup
+		outputDirectory := filepath.Join("out", strings.TrimSuffix(filepath.Base(mtfFilePath), filepath.Ext(mtfFilePath)))
+		for _, virtualFile := range archive.VirtualFiles {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				section := io.NewSectionReader(mtfFile, 0, math.MaxInt64)
+				extractedFile, err := lib.ExtractVirtualFile(section, virtualFile)
+				if err != nil {
+					// fmt.Printf("Error extracting file `%s`: %+v\r\n", virtualFile.FileName, err)
+					return
+				}
+
+				writePath := filepath.Join(outputDirectory, virtualFile.FileName)
+				// fmt.Printf("Writing `%s` (%d bytes)...\r\n", writePath, len(extractedFile))
+
+				os.MkdirAll(filepath.Dir(writePath), os.ModePerm)
+				err = os.WriteFile(writePath, extractedFile, os.ModePerm)
+				if err != nil {
+					// fmt.Printf("Error writing extracted file `%s`: %+v\r\n", virtualFile.FileName, err)
+					return
+				}
+
+				extractedFiles++
+				sub <- extractProgressMsg{
+					extractedFiles:    float64(extractedFiles),
+					totalFiles:        float64(totalFiles),
+					lastExtractedFile: virtualFile.FileName,
+					time:              time.Now().UTC(),
+				}
+			}()
+		}
+
+		wg.Wait()
 		return extractProgressMsg{
 			extractedFiles: float64(totalFiles),
 			totalFiles:     float64(totalFiles),
 			isDone:         true,
+			time:           time.Now().UTC(),
 		}
 	}
 }
@@ -87,21 +106,26 @@ const (
 var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render
 
 type model struct {
-	rootPath    string
-	archivePath string
+	previousModel tea.Model
+	rootPath      string
+	archivePath   string
 
 	sub            chan extractProgressMsg
 	percent        float64
+	isDone         bool
 	progress       progress.Model
 	extractedFiles []string
+	earliestTime   time.Time
+	latestTime     time.Time
 }
 
-func New(rootPath, archivePath string) model {
+func New(previousModel tea.Model, rootPath, archivePath string) model {
 	return model{
-		rootPath:    rootPath,
-		archivePath: archivePath,
-		sub:         make(chan extractProgressMsg),
-		progress:    progress.New(progress.WithDefaultGradient(), progress.WithWidth(filters.GlobalWindowSize.Width-(padding*2)-4)),
+		previousModel: previousModel,
+		rootPath:      rootPath,
+		archivePath:   archivePath,
+		sub:           make(chan extractProgressMsg),
+		progress:      progress.New(progress.WithDefaultGradient(), progress.WithWidth(filters.GlobalWindowSize.Width-(padding*2)-4)),
 	}
 }
 
@@ -115,11 +139,25 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		return m, tea.Quit
+		if m.isDone {
+			return m.previousModel, nil
+		}
+		return m, nil
 	case extractProgressMsg:
-		m.percent = msg.extractedFiles / msg.totalFiles
-		if m.percent >= 1.0 {
-			m.percent = 1.0
+		percent := msg.extractedFiles / msg.totalFiles
+		if percent >= 1.0 {
+			percent = 1.0
+		}
+
+		if percent > m.percent {
+			m.percent = percent
+		}
+
+		if m.earliestTime.IsZero() || m.earliestTime.After(msg.time) {
+			m.earliestTime = msg.time
+		}
+		if m.latestTime.IsZero() || m.latestTime.Before(msg.time) {
+			m.latestTime = msg.time
 		}
 
 		if msg.lastExtractedFile != "" && (len(m.extractedFiles) == 0 || m.extractedFiles[0] != msg.lastExtractedFile) {
@@ -127,7 +165,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.isDone {
-			return m, nil // break the wait loop // TODO how to go back...
+			// break the wait loop.
+			m.isDone = true
+			return m, nil
 		}
 
 		return m, waitForProgress(m.sub)
@@ -149,8 +189,14 @@ func (m model) View() string {
 		}
 		listing = "\n\n" + pad + "- " + strings.Join(m.extractedFiles[:listingSize], "\n"+pad+"- ")
 	}
+
+	helpMessage := "Extraction in progress"
+	if m.isDone {
+		helpMessage = fmt.Sprintf("Extraction took %s, Press any key to return", m.latestTime.Sub(m.earliestTime))
+	}
+
 	return "\n" +
 		pad + m.progress.ViewAs(m.percent) + "\n\n" +
-		pad + helpStyle("Press any key to quit") +
+		pad + helpStyle(helpMessage) +
 		listing
 }
