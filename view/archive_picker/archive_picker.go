@@ -3,6 +3,7 @@ package archive_picker
 import (
 	"io/fs"
 	"path/filepath"
+	"stone-tools/config"
 	"stone-tools/view/archive_extractor"
 	"stone-tools/view/filters"
 	"strings"
@@ -25,13 +26,13 @@ func (i item) Description() string { return i.Desc }
 func (i item) FilterValue() string { return i.FileName }
 
 type model struct {
-	rootPath string
-	list     list.Model
+	conf config.Config
+	list list.Model
 }
 
-func New(rootPath string) model {
+func New(conf config.Config) model {
 	var listItems []list.Item
-	filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
+	filepath.WalkDir(conf.DarkstoneDirectory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -43,8 +44,8 @@ func New(rootPath string) model {
 	})
 
 	m := model{
-		rootPath: rootPath,
-		list:     list.New(listItems, list.NewDefaultDelegate(), 0, 0),
+		conf: conf,
+		list: list.New(listItems, list.NewDefaultDelegate(), 0, 0),
 	}
 	m.list.Title = "MTF Archives"
 
@@ -65,7 +66,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "enter":
-			nextView := archive_extractor.New(m, m.rootPath, m.list.SelectedItem().(item).Path)
+			nextView := archive_extractor.New(m, m.conf.DarkstoneDirectory, m.list.SelectedItem().(item).Path)
 			return nextView, nextView.Init()
 		}
 	case tea.WindowSizeMsg:

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"stone-tools/config"
+	"stone-tools/view/archive_picker"
 	"stone-tools/view/filters"
 	"stone-tools/view/root_picker"
 
@@ -12,12 +14,27 @@ import (
 )
 
 func Run() error {
-	startDirectory, err := determineStartDirectory()
+	conf, err := config.LoadConfig()
 	if err != nil {
 		return err
 	}
 
-	p := tea.NewProgram(root_picker.New(startDirectory), tea.WithAltScreen(), tea.WithFilter(filters.GlobalFilter))
+	var model tea.Model
+	if conf.DarkstoneDirectory == "" {
+		// need to figure out root darkstone directory
+		startDirectory, err := determineStartDirectory()
+		if err != nil {
+			return err
+		}
+
+		conf.DarkstoneDirectory = startDirectory
+		model = root_picker.New(conf)
+	} else {
+		// go straight to archive selector
+		model = archive_picker.New(conf)
+	}
+
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithFilter(filters.GlobalFilter))
 	if _, err := p.Run(); err != nil {
 		return err
 	}

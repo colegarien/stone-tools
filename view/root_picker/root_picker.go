@@ -3,6 +3,7 @@ package root_picker
 import (
 	"strings"
 
+	"stone-tools/config"
 	"stone-tools/view/archive_picker"
 
 	"github.com/charmbracelet/bubbles/filepicker"
@@ -10,21 +11,21 @@ import (
 )
 
 type model struct {
-	filepicker     filepicker.Model
-	selectedFolder string
-	quitting       bool
-	err            error
+	filepicker filepicker.Model
+	conf       config.Config
+	quitting   bool
+	err        error
 }
 
-func New(startDirectory string) model {
+func New(conf config.Config) model {
 	fp := filepicker.New()
 	fp.DirAllowed = true
 	fp.FileAllowed = false
-	fp.CurrentDirectory = startDirectory
+	fp.CurrentDirectory = conf.DarkstoneDirectory
 
 	return model{
-		filepicker:     fp,
-		selectedFolder: startDirectory,
+		filepicker: fp,
+		conf:       conf,
 	}
 }
 
@@ -40,8 +41,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		case "c":
-			if m.err == nil && m.selectedFolder != "" {
-				return archive_picker.New(m.selectedFolder), nil
+			if m.err == nil && m.conf.DarkstoneDirectory != "" {
+				config.SaveConfig(m.conf)
+				return archive_picker.New(m.conf), nil
 			}
 		}
 	}
@@ -50,9 +52,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.filepicker, cmd = m.filepicker.Update(msg)
 
 	if didSelect, _ := m.filepicker.DidSelectFile(msg); didSelect {
-		m.selectedFolder = m.filepicker.CurrentDirectory
+		m.conf.DarkstoneDirectory = m.filepicker.CurrentDirectory
 	} else if m.filepicker.CurrentDirectory != "" {
-		m.selectedFolder = m.filepicker.CurrentDirectory
+		m.conf.DarkstoneDirectory = m.filepicker.CurrentDirectory
 	}
 
 	return m, cmd
@@ -66,11 +68,11 @@ func (m model) View() string {
 	s.WriteString("\n  ")
 	if m.err != nil {
 		s.WriteString(m.filepicker.Styles.DisabledFile.Render(m.err.Error()))
-	} else if m.selectedFolder == "" {
+	} else if m.conf.DarkstoneDirectory == "" {
 		s.WriteString("Navigate to MTF installation:")
 		s.WriteString("\n")
 	} else {
-		s.WriteString("Current folder: " + m.filepicker.Styles.Selected.Render(m.selectedFolder))
+		s.WriteString("Current folder: " + m.filepicker.Styles.Selected.Render(m.conf.DarkstoneDirectory))
 		s.WriteString("\n  - Hit `c` to select as root.")
 	}
 	s.WriteString("\n\n" + m.filepicker.View() + "\n")

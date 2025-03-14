@@ -3,5 +3,6 @@
 *.tga
 *.o3d
 *.exe
+*.json
 out
 .vscode
