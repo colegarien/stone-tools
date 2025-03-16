@@ -46,8 +46,8 @@ type O3DFace struct {
 	V2 uint16
 	V3 uint16 // unsigned 0xFFFF/O3DUnused if "unsued"
 
-	Ignore1 uint32 // maybe flags
-	Ignore2 uint16 // maybe short flags?
+	Ignore1    uint32 // maybe flags
+	MaterialId uint16
 }
 
 func ExtractO3D(o3dFile io.Reader) (O3DModel, error) {
@@ -184,7 +184,7 @@ func ExtractO3D(o3dFile io.Reader) (O3DModel, error) {
 			return o3dModel, err
 		}
 
-		err = binary.Read(o3dFile, binary.LittleEndian, &face.Ignore2)
+		err = binary.Read(o3dFile, binary.LittleEndian, &face.MaterialId)
 		if err != nil {
 			return o3dModel, err
 		}
