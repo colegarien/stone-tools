@@ -10,6 +10,27 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
+type GraphicsMode int
+
+func (m GraphicsMode) String() string {
+	switch m {
+	case GraphicsModeWireFrame:
+		return "Wireframe"
+	case GraphicsModeSolid:
+		return "Solid"
+	case GraphicsModeTextured:
+		return "Textured"
+	}
+
+	return "Unknown"
+}
+
+const (
+	GraphicsModeWireFrame = 0
+	GraphicsModeSolid     = 1
+	GraphicsModeTextured  = 2
+)
+
 func main() {
 	// Initialization
 	//--------------------------------------------------------------------------------------
@@ -34,6 +55,11 @@ func main() {
 	var distance float32 = 60
 	var yaw float32 = 300.0
 	var pitch float32 = 34.0
+	var graphicsMode GraphicsMode = GraphicsModeWireFrame
+	wantsToChangeMode := false
+	var isGridOn = true
+	wantsToChangeGrid := false
+
 	var camera rl.Camera
 	camera.Position = rl.Vector3{
 		X: 0.0,
@@ -125,11 +151,35 @@ func main() {
 			}
 		}
 
+		if rl.IsKeyDown(rl.KeyUp) {
+			camera.Target.Y += 0.5
+		} else if rl.IsKeyDown(rl.KeyDown) {
+			camera.Target.Y -= 0.5
+		}
+
+		if rl.IsKeyDown(rl.KeyC) {
+			camera.Target.Y = 0
+		}
+
+		if wantsToChangeMode && rl.IsKeyUp(rl.KeyZ) {
+			wantsToChangeMode = false
+			graphicsMode = (graphicsMode + 1) % 3
+		} else if rl.IsKeyDown(rl.KeyZ) {
+			wantsToChangeMode = true
+		}
+
+		if wantsToChangeGrid && rl.IsKeyUp(rl.KeyG) {
+			wantsToChangeGrid = false
+			isGridOn = !isGridOn
+		} else if rl.IsKeyDown(rl.KeyG) {
+			wantsToChangeGrid = true
+		}
+
 		// put camera into correct orbit
-		camera.Position = rl.Vector3Transform(
+		camera.Position = rl.Vector3Add(camera.Target, rl.Vector3Transform(
 			rl.Vector3{X: 0, Y: 0, Z: distance},
 			rl.MatrixMultiply(rl.MatrixRotateX(rl.Deg2rad*pitch), rl.MatrixRotateY(rl.Deg2rad*yaw)),
-		)
+		))
 
 		// rendering
 		rl.BeginDrawing()
@@ -142,31 +192,45 @@ func main() {
 
 		// --- Wireframe O3D Model ---
 		for _, face := range o3dModel.Faces {
+			color := rl.Color{R: 255, G: 255, B: 255, A: 255}
+
 			vertex0 := o3dModel.Vertices[face.V0]
 			vertex1 := o3dModel.Vertices[face.V1]
 			vertex2 := o3dModel.Vertices[face.V2]
 
-			rl.DrawLine3D(rl.Vector3{X: vertex0.X, Y: vertex0.Y, Z: vertex0.Z}, rl.Vector3{X: vertex1.X, Y: vertex1.Y, Z: vertex1.Z}, rl.Color{R: 255, G: 255, B: 255, A: 255})
-			rl.DrawLine3D(rl.Vector3{X: vertex1.X, Y: vertex1.Y, Z: vertex1.Z}, rl.Vector3{X: vertex2.X, Y: vertex2.Y, Z: vertex2.Z}, rl.Color{R: 255, G: 255, B: 255, A: 255})
-			if face.V3 == uint16(lib.O3DUnused) {
-				// finish up triangle
-				rl.DrawLine3D(rl.Vector3{X: vertex2.X, Y: vertex2.Y, Z: vertex2.Z}, rl.Vector3{X: vertex0.X, Y: vertex0.Y, Z: vertex0.Z}, rl.Color{R: 255, G: 255, B: 255, A: 255})
-			} else {
-				// render as quad
-				vertex3 := o3dModel.Vertices[face.V3]
-				rl.DrawLine3D(rl.Vector3{X: vertex2.X, Y: vertex2.Y, Z: vertex2.Z}, rl.Vector3{X: vertex3.X, Y: vertex3.Y, Z: vertex3.Z}, rl.Color{R: 255, G: 255, B: 255, A: 255})
-				rl.DrawLine3D(rl.Vector3{X: vertex3.X, Y: vertex3.Y, Z: vertex3.Z}, rl.Vector3{X: vertex0.X, Y: vertex0.Y, Z: vertex0.Z}, rl.Color{R: 255, G: 255, B: 255, A: 255})
+			if graphicsMode == GraphicsModeWireFrame {
+				rl.DrawLine3D(rl.Vector3{X: vertex0.X, Y: vertex0.Y, Z: vertex0.Z}, rl.Vector3{X: vertex1.X, Y: vertex1.Y, Z: vertex1.Z}, color)
+				rl.DrawLine3D(rl.Vector3{X: vertex1.X, Y: vertex1.Y, Z: vertex1.Z}, rl.Vector3{X: vertex2.X, Y: vertex2.Y, Z: vertex2.Z}, color)
+				if face.V3 == uint16(lib.O3DUnused) {
+					// finish up triangle
+					rl.DrawLine3D(rl.Vector3{X: vertex2.X, Y: vertex2.Y, Z: vertex2.Z}, rl.Vector3{X: vertex0.X, Y: vertex0.Y, Z: vertex0.Z}, color)
+				} else {
+					// render as quad
+					vertex3 := o3dModel.Vertices[face.V3]
+					rl.DrawLine3D(rl.Vector3{X: vertex2.X, Y: vertex2.Y, Z: vertex2.Z}, rl.Vector3{X: vertex3.X, Y: vertex3.Y, Z: vertex3.Z}, color)
+					rl.DrawLine3D(rl.Vector3{X: vertex3.X, Y: vertex3.Y, Z: vertex3.Z}, rl.Vector3{X: vertex0.X, Y: vertex0.Y, Z: vertex0.Z}, color)
 
+				}
+			} else if graphicsMode == GraphicsModeSolid {
+				rl.DrawTriangle3D(rl.Vector3{X: vertex0.X, Y: vertex0.Y, Z: vertex0.Z}, rl.Vector3{X: vertex1.X, Y: vertex1.Y, Z: vertex1.Z}, rl.Vector3{X: vertex2.X, Y: vertex2.Y, Z: vertex2.Z}, color)
+				if face.V3 != lib.O3DUnused {
+					vertex3 := o3dModel.Vertices[face.V3]
+					rl.DrawTriangle3D(rl.Vector3{X: vertex2.X, Y: vertex2.Y, Z: vertex2.Z}, rl.Vector3{X: vertex3.X, Y: vertex3.Y, Z: vertex3.Z}, rl.Vector3{X: vertex0.X, Y: vertex0.Y, Z: vertex0.Z}, color)
+				}
+			} else if graphicsMode == GraphicsModeTextured {
+				// TODO textures and stuff
 			}
 		}
 		// --- END Wireframe O3D Model ---
-
-		rl.DrawGrid(20, 5.0)
+		if isGridOn {
+			rl.DrawGrid(20, 5.0)
+		}
 		rl.DrawLine3D(rl.Vector3{X: 0, Y: 0, Z: 0}, rl.Vector3{X: 10, Y: 0, Z: 0}, rl.Red)
 		rl.DrawLine3D(rl.Vector3{X: 0, Y: 0, Z: 0}, rl.Vector3{X: 0, Y: 10, Z: 0}, rl.Green)
 		rl.DrawLine3D(rl.Vector3{X: 0, Y: 0, Z: 0}, rl.Vector3{X: 0, Y: 0, Z: 10}, rl.Blue)
 
 		rl.EndMode3D()
+		rl.DrawText(fmt.Sprintf("Graphics Mode (Z): %s\nGrid On (G): %t", graphicsMode.String(), isGridOn), screenWidth-260, 10, 18, rl.Yellow)
 		rl.DrawText(fmt.Sprintf("Yaw (A/D): %f\nPitch (W/S): %f\nDistance (Q/E): %f", yaw, pitch, distance), 10, 10, 18, rl.Green)
 		rl.DrawFPS(10, 80)
 		rl.EndDrawing()
